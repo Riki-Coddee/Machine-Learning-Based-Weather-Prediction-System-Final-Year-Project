@@ -12,6 +12,7 @@ The **Weather Prediction System** project is developed by the following team mem
 
 - **Sanket Banerjee**: [Sanket2004](https://github.com/Sanket2004)
 - **Suhana Parvin**: [suhanaparvin12](https://github.com/suhanaparvin12)
+- **Shouvik Kr Ghosh**: [ShouvikGhosh2](https://github.com/ShouvikGhosh2)
 
 ## Guided by
 - **Sheuli Chakraborty** [Google Scholar](https://scholar.google.com/citations?user=UcYPEX8AAAAJ&hl=en)
