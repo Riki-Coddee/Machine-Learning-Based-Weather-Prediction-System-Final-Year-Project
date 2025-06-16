@@ -1,0 +1,18 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Ubuntu Sans", sans-serif;
+  --font-mono: "Ubuntu Sans Mono", monospace;
+}
+
+@layer base {
+  html {
+    @apply font-sans;
+  }
+}
+
+/* For Leaflet map */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+}
