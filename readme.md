@@ -11,6 +11,7 @@ A final year project of the Department of Information Technology, Asansol Engine
 The **Weather Prediction System** project is developed by the following team members:
 
 - **Sanket Banerjee**: [Sanket2004](https://github.com/Sanket2004)
+- **Suhana Parvin**: [suhanaparvin12](https://github.com/suhanaparvin12)
 
 ## Guided by
 - **Sheuli Chakraborty** [Google Scholar](https://scholar.google.com/citations?user=UcYPEX8AAAAJ&hl=en)
