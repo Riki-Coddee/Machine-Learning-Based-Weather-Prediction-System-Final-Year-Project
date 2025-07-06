@@ -17,10 +17,14 @@ import {
   Play,
 } from "lucide-react";
 import { useEffect } from "react";
-
+import { useAuth } from "../context/AuthContext";
 export default function HomePage() {
+  const { user, logout } = useAuth();
   const location = useLocation();
-
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
   useEffect(() => {
     const hash = location.hash;
     if (hash) {
@@ -33,20 +37,8 @@ export default function HomePage() {
 
   const teamDetails = [
     {
-      name: "Suhana Parvin",
-      github: "https://github.com/suhanaparvin12",
-    },
-    {
-      name: "Sanket Banerjee",
-      github: "https://github.com/Sanket2004",
-    },
-    {
-      name: "Bithika Roy",
-      github: "https://github.com/roybithika18",
-    },
-    {
-      name: "Shouvik Kr. Ghosh",
-      github: "https://github.com/ShouvikGhosh2",
+      name: "Rikesh Shrestha",
+      github: "https://github.com/Riki-Coddee",
     },
   ];
 
@@ -74,7 +66,7 @@ export default function HomePage() {
 
           <div className="mb-4">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              A Group Project by
+              A Project by
             </h3>
             <div className="flex flex-wrap justify-center">
               {teamDetails.map((member, index) => {
@@ -91,7 +83,9 @@ export default function HomePage() {
                       alt={member.name}
                       className="w-6 h-6 rounded-full mr-2"
                     />
-                    <span className="text-gray-700 border-b">{member.name}</span>
+                    <span className="text-gray-700 border-b">
+                      {member.name}
+                    </span>
                   </a>
                 );
               })}
@@ -101,8 +95,8 @@ export default function HomePage() {
           <div className="mb-8">
             <h3>
               Guided by{" "}
-              <a href="https://scholar.google.com/citations?user=UcYPEX8AAAAJ&hl=en" className="border-b">
-                Dr. Sheuli Chakraborty
+              <a href="#" className="border-b">
+                Ananda KC Sir
               </a>
             </h3>
           </div>
@@ -121,6 +115,30 @@ export default function HomePage() {
             >
               <BarChart3 className="h-5 w-5 mr-2" />
               View Historical Data
+            </Link>
+            <Link
+              to={"/view_user_predictions"}
+              className="inline-flex items-center justify-center px-6 py-3 bg-gradient-to-r from-blue-600 to-green-500 text-white rounded-xl hover:from-blue-700 hover:to-green-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1 group"
+            >
+              <div className="flex items-center gap-2">
+                <div className="group-hover:rotate-12 transition-transform">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
+                    <path d="M3 12a9 9 0 1 0 18 0a9 9 0 0 0 -18 0" />
+                    <path d="M12 7v5l3 3" />
+                    <path d="M9 12h6" />
+                  </svg>
+                </div>
+                <span className="font-semibold tracking-wide">
+                  View Your Predictions
+                </span>
+              </div>
             </Link>
           </div>
         </div>
@@ -490,10 +508,10 @@ export default function HomePage() {
               <Play className="h-5 w-5 mr-2" />
               Try Live Demo
             </Link>
-            <button className="inline-flex items-center justify-center px-6 py-3 border border-white text-white rounded-lg hover:bg-white hover:text-gray-900 transition-all">
+            {/* <button className="inline-flex items-center justify-center px-6 py-3 border border-white text-white rounded-lg hover:bg-white hover:text-gray-900 transition-all">
               <Github className="h-5 w-5 mr-2" />
               View Source Code
-            </button>
+            </button> */}
           </div>
         </div>
       </section>

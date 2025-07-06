@@ -10,7 +10,11 @@ import {
 } from "recharts";
 import { TrendingUp, Calendar, BarChart3, AlertCircle } from "lucide-react";
 
-function HistoricalDataVisualizer({ area }) {
+function HistoricalDataVisualizer({ weatherData, area }) {
+  // If weatherData is provided, use it (PredictionPage case)
+  // If area is provided directly, use that (HistoricalData case)
+  const location = weatherData?.location || area;
+  
   const [trendData, setTrendData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -22,26 +26,66 @@ function HistoricalDataVisualizer({ area }) {
   const formatDate = (date) => date.toISOString().slice(0, 10);
 
   useEffect(() => {
-    if (!area) return;
+    if (!location) return;
 
     async function fetchHistoricalData() {
       setLoading(true);
       setError(null);
 
       try {
-        const response = await fetch(
-          `http://localhost:5000/historical-trends/${area}?start_date=${formatDate(
-            startDate
-          )}&end_date=${formatDate(endDate)}`
-        );
-
+        let response;
+        
+        if (weatherData) {
+          // PredictionPage case - POST request with weather data
+          const datasetKeys = [
+            "Temperature(C)",
+            "Humidity(%)",
+            "Pressure(hPa)",
+            "WindSpeed(km/h)",
+            "CloudCover(%)",
+            "Rainfall(mm)",
+          ];
+          const filteredWeatherData = {};
+          for (const key of datasetKeys) {
+            if (
+              weatherData[key] !== undefined &&
+              weatherData[key] !== null
+            ) {
+              filteredWeatherData[key] = weatherData[key];
+            }
+          }
+          
+          const payload = {
+            area: location,
+            start_date: formatDate(startDate),
+            end_date: formatDate(endDate),
+            weather_data: filteredWeatherData,
+          };
+          
+          response = await fetch(
+            `http://localhost:5000/historical-trends`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify(payload),
+            }
+          );
+        } else {
+          // HistoricalData case - GET request with just area
+          response = await fetch(
+            `http://localhost:5000/historical-trends/${location}?start_date=${formatDate(startDate)}&end_date=${formatDate(endDate)}`
+          );
+        }
+        
         if (!response.ok) {
           const errorData = await response.json();
           throw new Error(errorData.error || "Failed to fetch historical data");
         }
 
         const data = await response.json();
-        setTrendData(data.rainfall_trend);
+        setTrendData(data.rainfall_trend || []);
       } catch (err) {
         setError(err.message);
       } finally {
@@ -50,9 +94,9 @@ function HistoricalDataVisualizer({ area }) {
     }
 
     fetchHistoricalData();
-  }, [area]);
+  }, [location]);
 
-  if (!area) {
+  if (!location) {
     return (
       <div className="p-8 text-center">
         <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -127,7 +171,7 @@ function HistoricalDataVisualizer({ area }) {
               <TrendingUp className="h-6 w-6 mr-2" />
               <h2 className="text-xl font-semibold">Rainfall Trends</h2>
             </div>
-            <p className="text-indigo-100">Last 7 days • {area}</p>
+            <p className="text-indigo-100">Last 7 days • {location}</p>
           </div>
           <div className="text-right">
             <div className="bg-white/20 rounded-lg p-3">

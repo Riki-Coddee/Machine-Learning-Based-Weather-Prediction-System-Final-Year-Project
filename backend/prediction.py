@@ -1,174 +1,87 @@
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from imblearn.over_sampling import SMOTE
+from imblearn.ensemble import BalancedRandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report
 import pandas as pd
 import joblib
-from sklearn.preprocessing import StandardScaler
+import numpy as np
 
+from data_preprocessing import (
+    clean_weather_data,
+    add_features,
+    scale_data,
+    find_optimal_threshold
+)
+from data_visualization import (
+    plot_confusion_matrix,
+    plot_feature_importance
+)
 
-# Data Cleaning Methods
-def clean_weather_data(df):
-    """Data cleaning pipeline"""
-    print(f"Initial dataset shape: {df.shape}")
-
-    # Remove duplicates
-    df = df.drop_duplicates()
-    print(f"After removing duplicates: {df.shape}")
-
-    # Fill missing values with median
-    df = df.fillna(df.median())
-    print(f"Missing values filled: {df.isnull().sum().sum()} remaining")
-
-    # Remove obvious outliers (basic range checks)
-    df = df[(df['Temperature(C)'] >= -50) & (df['Temperature(C)'] <= 60)]
-    df = df[(df['Humidity(%)'] >= 0) & (df['Humidity(%)'] <= 100)]
-    df = df[(df['Pressure(hPa)'] >= 900) & (df['Pressure(hPa)'] <= 1100)]
-    print(f"After basic outlier removal: {df.shape}")
-
-    print("Data cleaning completed!\n")
-    return df
-
-
-# Load Data
+# === Load and Prepare Data ===
 df = pd.read_csv('weather_data.csv')
+
+# Validate binary classes
+print("\nRaw data class distribution:")
+print(df['Rainfall'].value_counts())
+if len(df['Rainfall'].unique()) < 2:
+    raise ValueError("Dataset must contain both rain (1) and no-rain (0) cases")
+
 df = clean_weather_data(df)
+df = add_features(df)
 
+# Validate again after cleaning
+if len(df['Rainfall'].unique()) < 2:
+    raise ValueError("Cleaning removed all cases of one class. Adjust cleaning.")
 
-# Split Features and Labels
+# Split features and target
 X = df.drop(columns=['Rainfall'])
-Y = df['Rainfall']
+y = df['Rainfall']
 
-# scale the data
-scaler = StandardScaler()
-X = pd.DataFrame(scaler.fit_transform(X), columns=[
-    'Temperature(C)', 'Humidity(%)', 'Pressure(hPa)', 'WindSpeed(km/h)', 'CloudCover(%)',
-    'Visibility(km)', 'DewPoint(C)', 'UVIndex', 'SolarRadiation(W/m²)', 'WindDirection(°)',
-    'PrecipitationLastHour(mm)', 'SoilMoisture(%)', 'EvaporationRate(mm/day)', 'FeelsLikeTemp(C)',
-    'TempChange1h(C)', 'WindGust(km/h)', 'PressureTendency(hPa/3h)'
-])
+# === Balance using SMOTE ===
+smote = SMOTE(random_state=42)
+X_resampled, y_resampled = smote.fit_resample(X, y)
+print("\nAfter SMOTE resampling:")
+print(y_resampled.value_counts(normalize=True))
 
+# === Scale features ===
+X_scaled, scaler = scale_data(X_resampled)
 
-# Train-Test Split
-X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.2, random_state=42)
+# === Train/Test Split ===
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y_resampled, test_size=0.2, random_state=42, stratify=y_resampled
+)
 
-# Define Models (with class_weight where applicable)
-models = {
-    "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42, class_weight='balanced'),
-    "Gradient Boosting": GradientBoostingClassifier(n_estimators=100, random_state=42),
-    "Logistic Regression": LogisticRegression(max_iter=1000, class_weight='balanced'),
-    "SVM": SVC(kernel='rbf', probability=True, class_weight='balanced'),
-    "Decision Tree": DecisionTreeClassifier(random_state=42, class_weight='balanced'),
-    "KNN": KNeighborsClassifier()
-}
+# === Train Model ===
+model = BalancedRandomForestClassifier(
+    n_estimators=300,
+    max_depth=15,
+    min_samples_split=10,
+    sampling_strategy='auto',
+    replacement=True,
+    random_state=42
+)
 
-# Evaluate Models
-results = {}
-for name, model in models.items():
-    print(f"\nTraining {name}...")
-    model.fit(X_train, Y_train)
-    Y_pred = model.predict(X_test)
-    accuracy = accuracy_score(Y_test, Y_pred)
-    report = classification_report(Y_test, Y_pred, output_dict=True, zero_division=0)
+print("\nTraining Random Forest model...")
+model.fit(X_train, y_train)
 
-    # Store results
-    results[name] = {
-        "accuracy": accuracy,
-        "classification_report": report
-    }
+# === Predict and Threshold ===
+y_probs = model.predict_proba(X_test)[:, 1]
+optimal_threshold = find_optimal_threshold(y_test, y_probs, beta=2)
+print(f"\nOptimal prediction threshold (F2-optimized): {optimal_threshold:.4f}")
 
-    # Print report
-    print(f"{name} Accuracy: {accuracy:.2f}")
-    print("Classification Report:")
-    print(classification_report(Y_test, Y_pred, zero_division=0))
+y_pred = (y_probs >= optimal_threshold).astype(int)
 
-    # Print confusion matrix
-    print("Confusion Matrix:")
-    print(confusion_matrix(Y_test, Y_pred))
+# === Evaluate Model ===
+accuracy = accuracy_score(y_test, y_pred)
+print(f"\nModel Accuracy: {accuracy:.2f}")
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
 
-    # Print confusion matrix using matplotlib
-    import matplotlib.pyplot as plt
-    import seaborn as sns
-    cm = confusion_matrix(Y_test, Y_pred)
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-    plt.xlabel('Predicted')
-    plt.ylabel('Actual')
-    plt.title(f'{name} Confusion Matrix')
-    plt.show()
-    plt.close()
-    print("\n")
+plot_confusion_matrix(y_test, y_pred)
+plot_feature_importance(model, X.columns)
 
-# Show bar chart comparing all algos with different colors
-accuracies = [results[model]["accuracy"] for model in results]
-colors = ['red', 'green', 'blue', 'orange', 'purple', 'yellow']
-plt.bar(results.keys(), accuracies, color=colors)
-plt.xlabel('Model')
-plt.ylabel('Accuracy')
-plt.title('Model Accuracy Comparison')
-plt.show()
-plt.close()
-
-# Find Best Model
-best_model_name = max(results, key=lambda x: results[x]["accuracy"])
-best_model = models[best_model_name]
-print(f"\n✅ Best Model: {best_model_name} with Accuracy: {results[best_model_name]['accuracy']:.2f}")
-
-# Feature Importance Analysis
-print(f"\n📊 Feature Importance Analysis for {best_model_name}:")
-print("=" * 60)
-
-if hasattr(best_model, 'feature_importances_'):
-    # Get feature importance scores
-    feature_names = X.columns
-    importance_scores = best_model.feature_importances_
-    
-    # Create feature importance dataframe
-    feature_importance_df = pd.DataFrame({
-        'Feature': feature_names,
-        'Importance': importance_scores,
-        'Importance_Percentage': importance_scores * 100
-    }).sort_values('Importance', ascending=False)
-    
-    print("Feature Importance Ranking:")
-    print("-" * 50)
-    for idx, row in feature_importance_df.iterrows():
-        print(f"{row['Feature']:<25}: {row['Importance']:.4f} ({row['Importance_Percentage']:.1f}%)")
-    
-    # Plot feature importance
-    plt.figure(figsize=(12, 8))
-    plt.barh(range(len(feature_importance_df)), feature_importance_df['Importance'])
-    plt.yticks(range(len(feature_importance_df)), feature_importance_df['Feature'])
-    plt.xlabel('Feature Importance Score')
-    plt.title(f'Feature Importance - {best_model_name}')
-    plt.gca().invert_yaxis()
-    plt.tight_layout()
-    plt.savefig('feature_importance.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    print("\nFeature importance chart saved as feature_importance.png")
-    
-    # Calculate cumulative importance
-    feature_importance_df['Cumulative_Importance'] = feature_importance_df['Importance'].cumsum()
-    
-    print(f"\nTop 5 features contribute {feature_importance_df.head(5)['Cumulative_Importance'].iloc[-1]:.1%} of total importance")
-    print(f"Top 10 features contribute {feature_importance_df.head(10)['Cumulative_Importance'].iloc[-1]:.1%} of total importance")
-
-else:
-    print(f"Feature importance not available for {best_model_name}")
-
-# Correlation Analysis
-print(f"\n🔍 Correlation Analysis:")
-print("=" * 40)
-correlation_with_target = df.corr()['Rainfall'].abs().sort_values(ascending=False)
-print("Features correlation with Rainfall (absolute values):")
-print("-" * 50)
-for feature, corr in correlation_with_target.items():
-    if feature != 'Rainfall':
-        print(f"{feature:<25}: {corr:.4f}")
-
-# Save the best model
-joblib.dump(best_model, 'best_rainfall_model.pkl')
+# === Save Artifacts ===
+joblib.dump(model, 'best_rainfall_model.pkl')
 joblib.dump(scaler, 'scaler.pkl')
-print(f"\n💾 Model and scaler saved successfully!")
+joblib.dump(optimal_threshold, 'threshold.pkl')
+print("\nModel artifacts saved successfully!")

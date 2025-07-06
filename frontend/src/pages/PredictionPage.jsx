@@ -9,7 +9,7 @@ import {
   MapPinIcon,
   PlusIcon,
 } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import Map from "../components/Map";
 import WeatherCard from "../components/WeatherCard";
 import PredictionResult from "../components/PredictionResult";
@@ -17,17 +17,61 @@ import LoadingState from "../components/LoadingState";
 import HistoricalDataVisualizer from "../components/HistoricalDataVisualizer";
 
 function PredictionPage() {
+  const [searchParams] = useSearchParams();
   const [location, setLocation] = useState(null);
   const [weatherData, setWeatherData] = useState(null);
   const [prediction, setPrediction] = useState(null);
+  const [openCageLoc, setOpenCageLoc] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('weatherToken') || null);
 
   const OPENWEATHER_API_KEY = "879534249ba8994e78dc54c905135a09";
+  const OPENCAGE_API_KEY = "828914e4cbdb4536a55ad9767ec63c6c";
   const PREDICTION_API_URL = "http://localhost:5000/";
+
+  const getPlaceName = async (lat, lng) => {
+    try {
+      const response = await fetch(
+        `https://api.opencagedata.com/geocode/v1/json?q=${lat}+${lng}&key=${OPENCAGE_API_KEY}`
+      );
+      const data = await response.json();
+
+      if (data && data.results && data.results.length > 0) {
+        return {
+          location:
+            data.results[0].components.suburb ||
+            data.results[0].components.hamlet ||
+            data.results[0].components.village ||
+            data.results[0].components.town ||
+            data.results[0].components.city ||
+            data.results[0].components.county ||
+            "Unknown",
+          country: data.results[0].components.country || "",
+        };
+      }
+    } catch (err) {
+      console.error("Reverse geocoding error:", err);
+    }
+    return { location: "Unknown", country: "" };
+  };
 
   useEffect(() => {
     setLoading(true);
+    
+    // First check for URL parameters
+    const latParam = searchParams.get('lat');
+    const lonParam = searchParams.get('lon');
+    
+    if (latParam && lonParam) {
+      setLocation({
+        lat: parseFloat(latParam),
+        lng: parseFloat(lonParam)
+      });
+      return;
+    }
+
+    // If no URL params, use geolocation
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
@@ -42,16 +86,16 @@ function PredictionPage() {
             setError(
               "Location access denied. Please allow location or select manually."
             );
-            setLocation({ lat: 51.505, lng: -0.09 }); // London fallback
+            setLocation({ lat: 27.7172, lng: 85.3240 }); // Kathmandu fallback
           }
         },
         { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
       );
     } else {
       setError("Geolocation not supported. Please select manually.");
-      setLocation({ lat: 51.505, lng: -0.09 });
+      setLocation({ lat: 27.7172, lng: 85.3240 }); // Kathmandu fallback
     }
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => {
     if (location) fetchWeatherData();
@@ -65,7 +109,7 @@ function PredictionPage() {
       const response = await fetch(
         `https://api.openweathermap.org/data/2.5/weather?lat=${location.lat}&lon=${location.lng}&units=metric&appid=${OPENWEATHER_API_KEY}`
       );
-
+      const {location: areaName, country} = await getPlaceName(location.lat, location.lng);
       if (!response.ok) throw new Error("Failed to fetch weather data");
 
       const data = await response.json();
@@ -80,14 +124,17 @@ function PredictionPage() {
         "UVIndex": 0,
         "SolarRadiation(W/m²)": data.clouds.all,
         "WindDirection(°)": data.wind.deg,
-        "PrecipitationLastHour(mm)": 0,
+        "PrecipitationLastHour(mm)": data.rain ? data.rain["1h"] || 0 : 0,
         "SoilMoisture(%)": 0,
         "EvaporationRate(mm/day)": 0,
         "FeelsLikeTemp(C)": data.main.feels_like,
         "TempChange1h(C)": 0,
-        "WindGust(km/h)": 0,
+        "WindGust(km/h)": data.wind.gust ? data.wind.gust * 3.6 : 0,
         "PressureTendency(hPa/3h)": 0,
+        "Area": `${areaName},${country}`
       };
+
+      setOpenCageLoc(await getPlaceName(location.lat, location.lng));
 
       setWeatherData({
         ...transformed,
@@ -106,18 +153,36 @@ function PredictionPage() {
   };
 
   const makePrediction = async (params) => {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      setError("Please login to make predictions");
+      return;
+    }
+
     try {
       const res = await fetch(PREDICTION_API_URL + "predict", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify(params),
       });
-      if (!res.ok) throw new Error("Prediction failed");
-
+      
+      if (!res.ok) {
+        if (res.status === 401) {
+          localStorage.removeItem('token');
+          setToken(null);
+          throw new Error("Session expired. Please login again.");
+        }
+        throw new Error("Prediction failed");
+      }
+      
       const data = await res.json();
       setPrediction(data);
     } catch (err) {
-      setError("Prediction server error. Is it running?");
+      setError(err.message);
     }
   };
 
@@ -131,10 +196,8 @@ function PredictionPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50">
-      {/* Hero Section */}
       <section className="py-20 px-4">
         <div className="container mx-auto text-center max-w-6xl">
-          {/* Page Title */}
           <div className="text-center mb-8">
             <h1 className="text-4xl font-bold text-gray-900 mb-2 font-mono tracking-tighter">
               Weather Prediction Dashboard
@@ -145,11 +208,9 @@ function PredictionPage() {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* Left Column - Map and Historical Data */}
             <div className="xl:col-span-2 space-y-6">
-              {/* Interactive Map */}
               <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-                <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-left">
+                <div className="p-10 h-[7rem] bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-left">
                   <div className="inline-flex space-x-2 items-center">
                     <PlusIcon />
                     <h2 className="text-xl font-semibold">
@@ -157,11 +218,10 @@ function PredictionPage() {
                     </h2>
                   </div>
                   <p className="text-blue-100">
-                    Click anywhere on the map to get weather predictions for
-                    that location
+                    Click anywhere on the map to get weather predictions for that location
                   </p>
                 </div>
-                <div className="h-80 lg:h-96">
+                <div className="h-96 lg:h-[537px]">
                   {location ? (
                     <Map
                       location={location}
@@ -182,23 +242,19 @@ function PredictionPage() {
                   <p className="text-sm text-gray-600 flex items-center">
                     <MapPin className="h-4 w-4 mr-2 text-blue-600" />
                     {location
-                      ? `Coordinates: ${location.lat.toFixed(
-                          4
-                        )}, ${location.lng.toFixed(4)}`
+                      ? `Coordinates: ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}`
                       : "Detecting location..."}
                   </p>
                 </div>
               </div>
 
-              {/* Historical Data Chart */}
               {location && weatherData && (
                 <div className="bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
-                  <HistoricalDataVisualizer area={weatherData?.location} />
+                  <HistoricalDataVisualizer weatherData={weatherData} />
                 </div>
               )}
             </div>
 
-            {/* Right Column - Weather Data and Predictions */}
             <div className="space-y-6">
               {!location ? (
                 <LoadingState message="Detecting your location..." />
@@ -220,7 +276,12 @@ function PredictionPage() {
                 </div>
               ) : weatherData ? (
                 <>
-                  <WeatherCard weatherData={weatherData} />
+                  <WeatherCard 
+                    weatherData={weatherData} 
+                    openCageLoc={openCageLoc} 
+                    setWeatherData={setWeatherData} 
+                    makePrediction={makePrediction}
+                  />
                   {prediction && <PredictionResult prediction={prediction} />}
                 </>
               ) : (
@@ -230,8 +291,7 @@ function PredictionPage() {
                     Select a Location
                   </h3>
                   <p className="text-gray-600">
-                    Click on the map to view weather data and predictions for
-                    any location
+                    Click on the map to view weather data and predictions for any location
                   </p>
                 </div>
               )}
